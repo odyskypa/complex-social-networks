@@ -1,0 +1,5 @@
+"Language","File","N","MaximumDegree","M/N","N/M","SumDegrees","SumDegreesLogarithm","C","gamma"
+"exponent_2","./data/samples_from_discrete_distributions/sample_of_zeta_with_parameter_2.txt","1000","362","5.077","0.196966712625566","5077","587.773717830918","13319.1882399913","2"
+"exponent_2.5","./data/samples_from_discrete_distributions/sample_of_zeta_with_parameter_2.5.txt","1000","53","1.835","0.544959128065395","1835","306.690626803927","1804.9055097537","2.5"
+"exponent_3","./data/samples_from_discrete_distributions/sample_of_zeta_with_parameter_3.txt","1000","41","1.365","0.732600732600733","1365","165.509586141294","1041.36315451421","3"
+"exponent_3.5","./data/samples_from_discrete_distributions/sample_of_zeta_with_parameter_3.5.txt","1000","36","1.272","0.786163522012579","1272","115.446706350107","990.909893540281","3.5"

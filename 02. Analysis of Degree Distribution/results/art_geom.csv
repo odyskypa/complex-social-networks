@@ -1,0 +1,6 @@
+"Language","File","N","MaximumDegree","M/N","N/M","SumDegrees","SumDegreesLogarithm","C","q"
+"probability_0.05","./data/samples_from_discrete_distributions/sample_of_geometric_with_parameter_0.05.txt","1000","133","19.242","0.0519696497245609","19242","2487.51030894859","47379.3230482024","0.05"
+"probability_0.1","./data/samples_from_discrete_distributions/sample_of_geometric_with_parameter_0.1.txt","1000","95","10.298","0.0971062342202369","10298","1877.34854837829","19659.3378329723","0.1"
+"probability_0.2","./data/samples_from_discrete_distributions/sample_of_geometric_with_parameter_0.2.txt","1000","36","5.018","0.199282582702272","5018","1264.83612500006","6410.95956859451","0.2"
+"probability_0.4","./data/samples_from_discrete_distributions/sample_of_geometric_with_parameter_0.4.txt","1000","14","2.485","0.402414486921529","2485","678.941550302458","1954.22604135377","0.4"
+"probability_0.8","./data/samples_from_discrete_distributions/sample_of_geometric_with_parameter_0.8.txt","1000","5","1.266","0.789889415481833","1266","164.973543026786","764.559405244502","0.8"

@@ -1,0 +1,878 @@
+---
+title: "Lab6CSN"
+output: pdf_document
+date: "2023-11-30"
+---
+
+# Lab 6
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+require("stats4")
+require("VGAM")
+require("xtable")
+```
+
+```{r}
+# Set as the working directory, the folder where this script is stored.
+work_dir <- dirname(rstudioapi::getSourceEditorContext()$path)
+setwd(work_dir)
+folder = "data_250_1000_2_10000/"
+n0 = 250
+n0_no_growth = 1000
+m0 = 2
+tmax = 10000
+```
+
+## Analysis of the degree sequence
+
+### Summary of the properties of the degree sequences at t_max
+
+```{r}
+files = c(paste(folder, "pa_ds_10000.txt", sep=""), paste(folder, "ra_ds_10000.txt", sep=""), paste(folder, "pa_ng_ds_10000.txt", sep=""))
+models = c("Preferential Attachment", "Random Attachment", "Preferential Attachment + no growth")
+
+degree_sequences <- c()
+N <- c()
+Maximum_degree <- c()
+MdN <- c()
+NdM <- c()
+
+for (x in 1:length(files)) { # Compute data that will be use in the future
+  degree_sequence <- read.table(files[x], header = FALSE)
+  degree_sequences <- append(degree_sequences, degree_sequence)
+  N <- append(N, length(degree_sequence$V1))
+  Maximum_degree <- append(Maximum_degree, max(degree_sequence$V1))
+  MdN <- append(MdN, sum(degree_sequence$V1)/length(degree_sequence$V1))
+  NdM <- append(NdM, length(degree_sequence$V1)/sum(degree_sequence$V1))
+}
+
+models_summary <- data.frame(model=models,
+                 N=N,
+                 Maximum_degree=Maximum_degree,
+                 "M/N"=MdN,
+                 "N/M"=NdM)
+models_summary
+```
+
+### Spectrum at t_max
+
+```{r}
+# Spectrum at t_max
+degree_spectrum = table(degree_sequences[1])
+barplot(degree_spectrum, main = models[1], xlab="degree", ylab="number of vertices")
+barplot(degree_spectrum, main = models[1], xlab="log(degree)", ylab="log(number of vertices)", log = "xy")
+```
+
+```{r}
+# Spectrum at t_max
+degree_spectrum = table(degree_sequences[2])
+barplot(degree_spectrum, main = models[2], xlab="degree", ylab="number of vertices")
+barplot(degree_spectrum, main = models[2], xlab="log(degree)", ylab="log(number of vertices)", log = "xy")
+```
+
+```{r}
+# Spectrum at t_max
+degree_spectrum = table(degree_sequences[3])
+barplot(degree_spectrum, main = models[3], xlab="degree", ylab="number of vertices")
+barplot(degree_spectrum, main = models[3], xlab="log(degree)", ylab="log(number of vertices)", log = "xy")
+```
+
+### Parameter estimation and AIC for Displaced Poisson
+
+```{r}
+C <- function(x, N) {
+  s <- 0
+  for (i in 1:N) {
+    for (j in x[i]) {
+      s <- s + log(j)
+    }
+  }
+  return (s)
+}
+
+get_AIC <- function(m2logL, K, N) {
+  return (m2logL + 2 * K * N / (N - K - 1))
+}
+
+dpoisson_aics <- c()
+lambdas <- c()
+for (n in 1:length(degree_sequences)) { # for each model, we estimate parameters and compute AIC
+  x <- degree_sequences[n]$V1
+  minus_log_likelihood_dpoisson <- function(lambda) {
+    return(- sum(x)*log(lambda) + N[n] * (lambda + log(1 - exp(-lambda))) + C(x, N[n]))
+  }
+  mle_dpoisson <- mle(minus_log_likelihood_dpoisson,
+                start = list(lambda = MdN[n]),
+                method = "L-BFGS-B",
+                lower = c(1.0000001))
+  m2logL_dpoisson <- attributes(summary(mle_dpoisson))$m2logL
+  lambdas <- append(lambdas, coef(mle_dpoisson)[['lambda']])
+  aic <- get_AIC(m2logL_dpoisson, 1, N[n])
+  dpoisson_aics <- append(dpoisson_aics, aic)
+}
+```
+
+### Parameter estimation and AIC for Displaced Geometric
+
+```{r}
+dgeometric_aics <- c()
+qs <- c()
+for (n in 1:length(degree_sequences)) { # for each model, we estimate parameters and compute AIC
+  x <- degree_sequences[n]$V1
+  minus_log_likelihood_dgeometric <- function(q) {
+    return(-((sum(x) - N[n]) * log(1 - q) + N[n] * log(q)))
+  }
+  mle_dgeometric <- mle(minus_log_likelihood_dgeometric,
+                start = list(q = NdM[n]),
+                method = "L-BFGS-B",
+                lower = c(0.00000001),
+                upper = c(0.99999999))
+  m2logL_dgeometric <- attributes(summary(mle_dgeometric))$m2logL
+  qs <- append(qs, coef(mle_dgeometric)[['q']])
+  aic <- get_AIC(m2logL_dgeometric, 1, N[n])
+  dgeometric_aics <- append(dgeometric_aics, aic)
+}
+```
+
+### Parameter estimation and AIC for for Zeta
+
+```{r}
+zeta_aics <- c()
+gammas_zeta <- c()
+for (n in 1:length(degree_sequences)) { # for each model, we estimate parameters and compute AIC
+  x <- degree_sequences[n]$V1
+  minus_log_likelihood_zeta <- function(gamma) {
+    return(length(x) * log(zeta(gamma)) + gamma * sum(log(x)))
+  }
+  mle_zeta <- mle(minus_log_likelihood_zeta,
+                start = list(gamma = 2),
+                method = "L-BFGS-B",
+                lower = c(1.0000001))
+  m2logL_zeta <- attributes(summary(mle_zeta))$m2logL
+  gammas_zeta <- append(gammas_zeta, coef(mle_zeta)[['gamma']])
+  aic <- get_AIC(m2logL_zeta, 1, N[n])
+  zeta_aics <- append(zeta_aics, aic)
+}
+```
+
+### Parameter estimation and AIC for Right-truncated Zeta
+
+```{r}
+H <- function(gamma, k_max) {
+  s <- 0
+  for (x in 1:k_max) {
+    s <- s + x^(-gamma)
+  }
+  return (s)
+}
+right_trunc_zeta_aics <- c()
+gammas_right_trunc_zeta <- c()
+k_maxs <- c()
+
+for (n in 1:length(degree_sequences)) {# for each model, we estimate parameters and compute AIC
+  x <- degree_sequences[n]$V1
+  minus_log_likelihood_right_trunc_zeta <- function(gamma, k_max) {
+    return(length(x) * log(H(gamma, k_max)) + gamma * sum(log(x)))
+  }
+  mle_zeta <- mle(minus_log_likelihood_right_trunc_zeta,
+                start = list(gamma = 2, k_max=Maximum_degree[n]),
+                method = "L-BFGS-B",
+                lower = c(1.0000001, Maximum_degree[n]),
+                upper = c(100, N[n]))
+  m2logL_zeta <- attributes(summary(mle_zeta))$m2logL
+  gammas_right_trunc_zeta <- append(gammas_right_trunc_zeta, coef(mle_zeta)[['gamma']])
+  k_maxs <- append(k_maxs, coef(mle_zeta)[['k_max']])
+  aic <- get_AIC(m2logL_zeta, 1, N[n])
+  right_trunc_zeta_aics <- append(right_trunc_zeta_aics, aic)
+}
+```
+
+### AIC of zeta distribution with gamma = 3
+
+```{r}
+zeta_3_aics <- c()
+for (n in 1:length(degree_sequences)) { # for each model, we compute AIC
+    x <- degree_sequences[n]$V1
+    L <- length(x) * log(zeta(3)) + 2 * sum(log(x))
+    aic <- get_AIC(-2 * L, 1, N[n])
+    zeta_3_aics <- append(zeta_3_aics, aic)
+}
+```
+
+### Summary of most likely parameters
+
+```{r}
+most_likely_parameter <- data.frame(model=models,
+                        "lambda"=lambdas,
+                        "q"=qs,
+                        "gamma_zeta"=gammas_zeta,
+                        "gamma_trunc_zeta"=gammas_right_trunc_zeta,
+                        "k_max"=k_maxs)
+most_likely_parameter
+```
+
+### AIC difference of a model on a given source
+
+### Compute best AIC for each models
+
+```{r}
+aic_best <- c()
+for (i in 1:length(dpoisson_aics)) {
+  aic_best <- append(aic_best, dpoisson_aics[i])
+}
+
+for (i in 1:length(dgeometric_aics)) {
+  if (aic_best[i] > dgeometric_aics[i]) {
+    aic_best[i] <- dgeometric_aics[i]
+  }
+}
+
+for (i in 1:length(zeta_3_aics)) {
+  if (aic_best[i] > zeta_3_aics[i]) {
+    aic_best[i] <- zeta_3_aics[i]
+  }
+}
+
+for (i in 1:length(zeta_aics)) {
+  if (aic_best[i] > zeta_aics[i]) {
+    aic_best[i] <- zeta_aics[i]
+  }
+}
+
+for (i in 1:length(right_trunc_zeta_aics)) {
+  if (aic_best[i] > right_trunc_zeta_aics[i]) {
+    aic_best[i] <- right_trunc_zeta_aics[i]
+  }
+}
+```
+
+### Compute the AIC Difference for each models
+
+```{r}
+
+dpoisson_aic_diffs <- c()
+for (i in 1:length(aic_best)) {
+  dpoisson_aic_diffs <- append(dpoisson_aic_diffs, dpoisson_aics[i] - aic_best[i])
+}
+
+dgeometric_aic_diffs <- c()
+for (i in 1:length(aic_best)) {
+  dgeometric_aic_diffs <- append(dgeometric_aic_diffs, dgeometric_aics[i] - aic_best[i])
+}
+
+zeta_3_aic_diffs <- c()
+for (i in 1:length(aic_best)) {
+  zeta_3_aic_diffs <- append(zeta_3_aic_diffs, zeta_3_aics[i] - aic_best[i])
+}
+
+zeta_aic_diffs <- c()
+for (i in 1:length(aic_best)) {
+  zeta_aic_diffs <- append(zeta_aic_diffs, zeta_aics[i] - aic_best[i])
+}
+
+right_trunc_zeta_aic_diffs <- c()
+for (i in 1:length(aic_best)) {
+  right_trunc_zeta_aic_diffs <- append(right_trunc_zeta_aic_diffs, right_trunc_zeta_aics[i] - aic_best[i])
+}
+```
+
+### AIC summary
+
+```{r}
+aics_summary <- data.frame(model=models,
+                        "Displ. Poisson"=dpoisson_aics,
+                        "Displ. Geometric"=dgeometric_aics,
+                        "Zeta (gamma=3)"=zeta_3_aics,
+                        "Zeta"=zeta_aics,
+                        "R.T. Zeta"=right_trunc_zeta_aics)
+aics_summary
+```
+
+### AIC difference summary
+
+```{r}
+aics_difference <- data.frame(model=models,
+                        "Displ. Poisson"=dpoisson_aic_diffs,
+                        "Displ. Geometric"=dgeometric_aic_diffs,
+                        "Zeta (gamma=3)"=zeta_3_aic_diffs,
+                        "Zeta"=zeta_aic_diffs,
+                        "R.T. Zeta"=right_trunc_zeta_aic_diffs)
+aics_difference
+```
+
+### Definition of the Models
+```{r}
+dis_poisson <- function(k, lambda) {
+  return (lambda^k * exp(-lambda) / (factorial(k) * (1 - exp(-lambda))))
+}
+
+dis_geo <- function(k, q) {
+  return ((1 - q)^(k - 1) * q)
+}
+
+dis_zeta <- function(k, gamma) {
+  return(k^(-gamma)/zeta(gamma))
+}
+
+dis_rt_zeta <- function(k, gamma, kmax) {
+  return (k^(-gamma)/H(gamma, kmax))
+}
+```
+
+### Plot model
+```{r}
+plot_model <- function(n) {
+  degree_spectrum = data.frame(table(degree_sequences[n]))
+  x = seq(1, Maximum_degree[n])
+  plot(degree_spectrum$V1, degree_spectrum$Freq/sum(degree_spectrum$Freq), xlab="degree", ylab="p", main=models[n])
+  lines(x, dis_poisson(x, most_likely_parameter[n,"lambda"]), col="red")
+  lines(x, dis_geo(x, most_likely_parameter[n,"q"]), col="green")
+  lines(x, dis_zeta(x, most_likely_parameter[n,"gamma_zeta"]), col="blue")
+  lines(x, dis_zeta(x, 3), col="cyan")
+  lines(x, dis_rt_zeta(x, most_likely_parameter[n,"gamma_trunc_zeta"], most_likely_parameter[1,"k_max"]), col="orange")
+  legend("topright", legend=c("Degree Distribution", "Poisson", "Geometric", "Zeta", "Zeta(3)", "Right-truncated Zeta"), col=c("black", "red", "green", "blue", "cyan", "orange"), lty=1, cex=0.8)
+}
+```
+
+#### Plot Preferential Attachment
+```{r}
+plot_model(1)
+```
+
+#### Plot Random Attachment
+```{r}
+plot_model(2)
+```
+
+#### Plot Preferential Attachment + No Growth
+```{r}
+plot_model(3)
+```
+
+## Analysis of the scaling of vertex over time
+
+### Prefential attachment
+
+```{r}
+x1 = read.csv(paste(folder, "pa_ts_1.txt", sep=""), header = FALSE) # Get data
+x10 = read.csv(paste(folder, "pa_ts_10.txt", sep=""), header = FALSE)
+x100 = read.csv(paste(folder, "pa_ts_100.txt", sep=""), header = FALSE)
+x1000 = read.csv(paste(folder, "pa_ts_1000.txt", sep=""), header = FALSE)
+
+k_i_pa <- function(t, m0) {
+  return (m0 * sqrt(t))
+}
+
+ki_t <- function(ti, t, x){
+  sqrt(ti) * x[t]
+}
+```
+
+```{r}
+# Generate the x values (indices from 1000 to 10000)
+x_selected_indices = 1001:tmax
+
+selected_values_x1 = x1[1, x_selected_indices]
+selected_values_x10 = x10[1, x_selected_indices]
+selected_values_x100 = x100[1, x_selected_indices]
+selected_values_x1000 = x1000[1, x_selected_indices]
+```
+
+```{r}
+# Generate values for the theoretical power-law
+k_selected_values <- k_i_pa(x_selected_indices, m0)
+y1 <- ki_t(1, x_selected_indices, x1)
+y10 <- ki_t(10, x_selected_indices, x10)
+y100 <- ki_t(100, x_selected_indices, x100)
+y1000 <- ki_t(1000, x_selected_indices, x1000)
+
+smooth_factor <- 1  # Adjust this value for the desired smoothing effect
+
+y1_smoothed <- predict(smooth.spline(x_selected_indices, y1, spar = smooth_factor), x_selected_indices)$y
+y10_smoothed <- predict(smooth.spline(x_selected_indices, y10, spar = smooth_factor), x_selected_indices)$y
+y100_smoothed <- predict(smooth.spline(x_selected_indices, y100, spar = smooth_factor), x_selected_indices)$y
+y1000_smoothed <- predict(smooth.spline(x_selected_indices, y1000, spar = smooth_factor), x_selected_indices)$y
+
+# Plot the smoothed lines
+plot(x_selected_indices, y1_smoothed, type = "l", col = "red", xlab = "Time", ylab = "Node Degree", ylim = c(1, 200), main = "Degrees of Selected Vertices (PA)")
+lines(x_selected_indices, y10_smoothed, col = "blue")
+lines(x_selected_indices, y100_smoothed, col = "green")
+lines(x_selected_indices, y1000_smoothed, col = "purple")
+lines(x_selected_indices, k_selected_values, type = "l", col = "black")
+
+# Add a legend
+legend("topleft", legend = c("t=1", "t=10", "t=100","t=1000","theoretical-power-law"), col = c("red", "blue","green", "purple", "black"), lty =c(1,1,1,1,1), cex = 0.5)
+```
+
+### Random attachment
+
+```{r}
+x1 = read.csv(paste(folder, "ra_ts_1.txt", sep=""), header = FALSE)
+x10 = read.csv(paste(folder, "ra_ts_10.txt", sep=""), header = FALSE)
+x100 = read.csv(paste(folder, "ra_ts_100.txt", sep=""), header = FALSE)
+x1000 = read.csv(paste(folder, "ra_ts_1000.txt", sep=""), header = FALSE)
+
+ki_t_ra <- function(m0, n0, ti, t, x){
+  return( x[t] + m0*(log(n0 + ti - 1) - m0))
+}
+
+k_i_ra <- function(t, m0) {
+  return (m0 * log(m0 + t -1))
+}
+```
+
+
+```{r}
+k_selected_values <- k_i_ra(x_selected_indices, m0)
+
+selected_values_x1 = x1[1, x_selected_indices]
+selected_values_x10 = x10[1, x_selected_indices]
+selected_values_x100 = x100[1, x_selected_indices]
+selected_values_x1000 = x1000[1, x_selected_indices]
+
+
+y1 <- ki_t_ra(m0, n0, 1, x_selected_indices, x1)
+y10 <- ki_t_ra(m0, n0, 10, x_selected_indices, x10)
+y100 <- ki_t_ra(m0, n0, 100, x_selected_indices, x100)
+y1000 <- ki_t_ra(m0, n0, 1000, x_selected_indices, x1000)
+```
+
+
+```{r}
+smooth_factor <- 1  # Adjust this value for the desired smoothing effect
+
+y1_smoothed <- predict(smooth.spline(x_selected_indices, y1, spar = smooth_factor), x_selected_indices)$y
+y10_smoothed <- predict(smooth.spline(x_selected_indices, y10, spar = smooth_factor), x_selected_indices)$y
+y100_smoothed <- predict(smooth.spline(x_selected_indices, y100, spar = smooth_factor), x_selected_indices)$y
+y1000_smoothed <- predict(smooth.spline(x_selected_indices, y1000, spar = smooth_factor), x_selected_indices)$y
+
+# Plot the smoothed lines
+plot(x_selected_indices, y1_smoothed, type = "l", col = "red", xlab = "Time", ylab = "Node Degree", ylim = c(10,20), main = "Degrees of Selected Vertices (RA)")
+lines(x_selected_indices, y10_smoothed, col = "blue")
+lines(x_selected_indices, y100_smoothed, col = "green")
+lines(x_selected_indices, y1000_smoothed, col = "purple")
+lines(x_selected_indices, k_selected_values, type = "l", col = "black")
+
+# Add a legend
+legend("topleft", legend = c("t=1", "t=10","t=100","t=1000","theoretical-logarithmic"), col = c("red","blue","green","purple", "black"),lty =c(1,1,1,1,1), cex = 0.5)
+```
+
+### Prefential attachment with no growth
+
+```{r}
+
+x1 = read.csv(paste(folder, "pa_ng_ts_1.txt", sep=""), header = FALSE)
+x10 = read.csv(paste(folder, "pa_ng_ts_10.txt", sep=""), header = FALSE)
+x100 = read.csv(paste(folder, "pa_ng_ts_100.txt", sep=""), header = FALSE)
+x1000 = read.csv(paste(folder, "pa_ng_ts_1000.txt", sep=""), header = FALSE)
+
+k_i_pa_ng <- function(t, m0, n0_no_growth) {
+  return ((2 * m0 * t)/n0_no_growth)
+}
+```
+
+```{r}
+k_selected_values <- k_i_pa_ng(x_selected_indices, m0, n0_no_growth)
+
+selected_values_x1 = x1[1, x_selected_indices]
+selected_values_x10 = x10[1, x_selected_indices]
+selected_values_x100 = x100[1, x_selected_indices]
+selected_values_x1000 = x1000[1, x_selected_indices]
+```
+
+```{r}
+# Smooth the lines using smooth.spline
+smooth_factor <- 1  # Adjust this value for the desired smoothing effect
+
+ts1_smoothed <- predict(smooth.spline(x_selected_indices, selected_values_x1, spar = smooth_factor), x_selected_indices)$y
+ts10_smoothed <- predict(smooth.spline(x_selected_indices, selected_values_x10, spar = smooth_factor), x_selected_indices)$y
+ts100_smoothed <- predict(smooth.spline(x_selected_indices, selected_values_x100, spar = smooth_factor), x_selected_indices)$y
+ts1000_smoothed <- predict(smooth.spline(x_selected_indices, selected_values_x1000, spar = smooth_factor), x_selected_indices)$y
+
+# Plot the smoothed lines
+plot(x_selected_indices, ts1_smoothed, type = "l", col = "red", xlab = "Time", ylab = "Node Degree", ylim = c(1,20), main = "Degrees of Selected Vertices (PA-NG)")
+lines(x_selected_indices, ts10_smoothed, col = "blue", lty=1)
+lines(x_selected_indices, ts100_smoothed, col = "green", lty=1)
+lines(x_selected_indices, ts1000_smoothed, col = "purple", lty=1)
+lines(x_selected_indices, k_selected_values, type = "l", col = "black")
+
+# Add a legend
+legend("topleft", legend = c("t=1", "t=10","t=100","t=1000","theoretical-curve"), col = c("red","blue","green","purple", "black"),lty =c(1,1,1,1,1), cex = 0.5)
+```
+
+### Definition of the models
+
+```{r}
+calculate_AIC <- function(RSS, n, p=0) {
+  n*log(2*pi) + n*log(RSS/n) + n + 2*(p + 1)
+}
+
+f_0  <- k ~ a * t
+f_1  <- k ~ a * t^(1/2)
+f_2  <- k ~ a * t^(b)
+f_3  <- k ~ a * exp(c1*t)
+f_4  <- k ~ a * log(t + d1)
+f_0p <- k ~ a * t + d0
+f_1p <- k ~ a * t^(1/2) + d0
+f_2p <- k ~ a * t^(b) + d0
+f_3p <- k ~ a * exp(c1*t) + d0
+f_4p <- k ~ a * log(t + d1) + d2
+```
+
+## Non-linear regression with non-linear least square
+
+```{r}
+main <- function(filename, title, theoretical) {
+  trace_ON <- FALSE
+  models <- list()
+  results <- data.frame(
+    a     = numeric(0),   # Optimal value for a (if appropriate)
+    b     = numeric(0),   # Optimal value for b (if appropriate)
+    c     = numeric(0),   # Optimal value for c (if appropriate)
+    d     = numeric(0),   # Optimal value for d (if appropriate)
+    d1    = numeric(0),   # Optimal value for d1 (if appropriate)
+    d2    = numeric(0),   # Optimal value for d2 (if appropriate)
+    s     = numeric(0),   # Residual standard error
+    AIC   = numeric(0)    # AIC raw value
+  )
+  dat <- read.csv(paste(folder, filename, sep=""), header = FALSE)
+  dat = data.frame(t = x_selected_indices, k = as.numeric(dat[1, x_selected_indices]))
+  
+  linear_model = lm(log(k)~log(t), data=dat) # Get initial value
+  a_initial = exp(coef(linear_model)[1])
+  b_initial = coef(linear_model)[2]
+  c_initial = 0
+  d0_initial = 1
+  d1_initial = 1
+  d2_initial = 1
+  
+  control <- nls.control(maxiter= 4096) # Increase the max number of iterations
+  
+  ### Regression with Model 0
+  nonlinear_model = nls(f_0, data=dat, start=list(a=a_initial), trace=trace_ON)
+  
+  res <- data.frame(
+    a = coef(nonlinear_model)["a"],
+    b = NaN,
+    c = NaN,
+    d = NaN,
+    d1 = NaN,
+    d2 = NaN,
+    s = sqrt(deviance(nonlinear_model)/df.residual(nonlinear_model)),
+    AIC = AIC(nonlinear_model)
+  )
+  
+  rownames(res) <- "0"
+  results <- rbind(results, res)
+  models <- append(models, nonlinear_model)
+  model0 <- nonlinear_model
+  
+  ### Regression with Model 1
+  
+  nonlinear_model = nls(f_1, data=dat, start=list(a=a_initial), trace=trace_ON, control=control)
+  
+  res <- data.frame(
+    a = coef(nonlinear_model)["a"],
+    b = NaN,
+    c = NaN,
+    d = NaN,
+    d1 = NaN,
+    d2 = NaN,
+    s = sqrt(deviance(nonlinear_model)/df.residual(nonlinear_model)),
+    AIC = AIC(nonlinear_model)
+  )
+  
+  rownames(res) <- "1"
+  results <- rbind(results, res)
+  models <- append(models, nonlinear_model)
+  model1 <- nonlinear_model
+  
+  ### Regression with Model 2
+  
+  nonlinear_model = nls(f_2, data=dat, start=list(a=a_initial, b=b_initial), trace=trace_ON, control=control)
+  
+  res <- data.frame(
+    a = coef(nonlinear_model)["a"],
+    b = coef(nonlinear_model)["b"],
+    c = NaN,
+    d = NaN,
+    d1 = NaN,
+    d2 = NaN,
+    s = sqrt(deviance(nonlinear_model)/df.residual(nonlinear_model)),
+    AIC = AIC(nonlinear_model)
+  )
+  
+  rownames(res) <- "2"
+  results <- rbind(results, res)
+  models <- append(models, nonlinear_model)
+  model2 <- nonlinear_model
+  
+  ### Regression with Model 3
+  
+  # nonlinear_model = nls(f_3, data=dat, start=list(a=a_initial, c1=c_initial), lower=list(c1=-1), upper=list(c1=1), trace=trace_ON, control=control, algorithm = "port")
+  # 
+  # res <- data.frame(
+  #   a = coef(nonlinear_model)["a"],
+  #   b = NaN,
+  #   c = coef(nonlinear_model)["c1"],
+  #   d = NaN,
+  #   d1 = NaN,
+  #   d2 = NaN,
+  #   s = sqrt(deviance(nonlinear_model)/df.residual(nonlinear_model)),
+  #   AIC = AIC(nonlinear_model)
+  # )
+  # 
+  # rownames(res) <- "3"
+  # results <- rbind(results, res)
+  # models <- append(models, nonlinear_model)
+  # model3 <- nonlinear_model
+  
+  ### Regression with Model 4
+  
+  nonlinear_model = nls(f_4, data=dat, start=list(a=a_initial, d1=d1_initial), trace=trace_ON, lower = list(d1=0), algorithm = "port", control=control)
+
+  res <- data.frame(
+    a = coef(nonlinear_model)["a"],
+    b = NaN,
+    c = NaN,
+    d = NaN,
+    d1 = coef(nonlinear_model)["d1"],
+    d2 = NaN,
+    s = sqrt(deviance(nonlinear_model)/df.residual(nonlinear_model)),
+    AIC = AIC(nonlinear_model)
+  )
+
+  rownames(res) <- "4"
+  results <- rbind(results, res)
+  models <- append(models, nonlinear_model)
+  model4 <- nonlinear_model
+  
+  
+  ### Regression with Model 0+
+  
+  nonlinear_model = nls(f_0p, data=dat, start=list(a=a_initial, d0=d0_initial), trace=trace_ON, control=control)
+  
+  res <- data.frame(
+    a = coef(nonlinear_model)["a"],
+    b = NaN,
+    c = NaN,
+    d = coef(nonlinear_model)["d0"],
+    d1 = NaN,
+    d2 = NaN,
+    s = sqrt(deviance(nonlinear_model)/df.residual(nonlinear_model)),
+    AIC = AIC(nonlinear_model)
+  )
+  
+  rownames(res) <- "0+"
+  results <- rbind(results, res)
+  models <- append(models, nonlinear_model)
+  model0p <- nonlinear_model
+  
+  ### Regression with Model 1+
+  
+  nonlinear_model = nls(f_1p, data=dat, start=list(a=a_initial, d0=d0_initial), trace=trace_ON, control=control)
+  
+  res <- data.frame(
+    a = coef(nonlinear_model)["a"],
+    b = NaN,
+    c = NaN,
+    d = coef(nonlinear_model)["d0"],
+    d1 = NaN,
+    d2 = NaN,
+    s = sqrt(deviance(nonlinear_model)/df.residual(nonlinear_model)),
+    AIC = AIC(nonlinear_model)
+  )
+  
+  rownames(res) <- "1+"
+  results <- rbind(results, res)
+  models <- append(models, nonlinear_model)
+  model1p <- nonlinear_model
+  
+  
+  ### Regression with Model 2+
+  
+  control <- nls.control(maxiter= 4096, warnOnly = TRUE, minFactor = 1/8192)
+  nonlinear_model = nls(f_2p, data=dat, start=list(a=a_initial, b=b_initial, d0=d0_initial), trace=trace_ON, control=control)
+  
+  res <- data.frame(
+    a = coef(nonlinear_model)["a"],
+    b = coef(nonlinear_model)["b"],
+    c = NaN,
+    d = coef(nonlinear_model)["d0"],
+    d1 = NaN,
+    d2 = NaN,
+    s = sqrt(deviance(nonlinear_model)/df.residual(nonlinear_model)),
+    AIC = AIC(nonlinear_model)
+  )
+  
+  rownames(res) <- "2+"
+  results <- rbind(results, res)
+  models <- append(models, nonlinear_model)
+  model2p <- nonlinear_model
+  
+  ### Regression with Model 3+
+  
+  # nonlinear_model = nls(f_3p, data=dat, start=list(a=a_initial, c1=c_initial, d0=d0_initial), lower=list(c1=-(10^9)), upper=list(c1=1), trace=trace_ON, control=control)
+  # 
+  # res <- data.frame(
+  #   a = coef(nonlinear_model)["a"],
+  #   b = NaN,
+  #   c = coef(nonlinear_model)["c1"],
+  #   d = coef(nonlinear_model)["d0"],
+  #   d1 = NaN,
+  #   d2 = NaN,
+  #   s = sqrt(deviance(nonlinear_model)/df.residual(nonlinear_model)),
+  #   AIC = AIC(nonlinear_model)
+  # )
+  # 
+  # rownames(res) <- "3+"
+  # results <- rbind(results, res)
+  # models <- append(models, nonlinear_model)
+  # model3p <- nonlinear_model
+  
+  ### Regression with Model 4+
+  
+  nonlinear_model = nls(f_4p, data=dat,  start=list(a=a_initial, d1=d1_initial, d2=d2_initial), lower=list(d1=0), trace=trace_ON, control=control, algorithm="port")
+
+  res <- data.frame(
+    a = coef(nonlinear_model)["a"],
+    b = NaN,
+    c = NaN,
+    d = NaN,
+    d1 = coef(nonlinear_model)["d1"],
+    d2 = coef(nonlinear_model)["d2"],
+    s = sqrt(deviance(nonlinear_model)/df.residual(nonlinear_model)),
+    AIC = AIC(nonlinear_model)
+  )
+
+  rownames(res) <- "4+"
+  results <- rbind(results, res)
+  models <- append(models, nonlinear_model)
+  model4p <- nonlinear_model
+  
+  ### Compute AIC Difference
+  
+  best_aic <- min(results$AIC)
+  index_best_aic <- which.min(results$AIC)
+  best_s <- min(results$s)
+  index_best_s <- which.min(results$s)
+  aic_diff <- results$AIC - best_aic
+  results_with_diff <- cbind(results, aic_diff)
+  print(results_with_diff)
+  
+  
+  ### Choose the best model according to AIC
+  
+  best_model <- switch(index_best_aic, 
+                       model0, 
+                       model1, 
+                       model2, 
+                       # model3, 
+                       model4,
+                       model0p, 
+                       model1p,
+                       model2p,
+                       # model3p,
+                       model4p
+                       )
+  best_model_name <- switch(index_best_aic, 
+                       "model0", 
+                       "model1", 
+                       "model2", 
+                       # model3, 
+                       "model4",
+                       "model0p", 
+                       "model1p",
+                       "model2p",
+                       # model3p,
+                       "model4p"
+                       )
+  print(index_best_aic)
+  print(best_model_name)
+  print(best_model)
+
+    # Plot all models
+  plot(dat$t, dat$k, type="l", xlab="t", ylab="k_i", main=title)
+  lines(dat$t, fitted(model0), col = "green")
+  lines(dat$t, fitted(model1), col = "red")
+  lines(dat$t, fitted(model2), col = "blue")
+  # lines(dat$t, fitted(model3), col = "cyan")
+  lines(dat$t, fitted(model4), col = "orange")
+  lines(dat$t, fitted(model0p), col = "yellow")
+  lines(dat$t, fitted(model1p), col = "pink")
+  lines(dat$t, fitted(model2p), col = "purple")
+  # lines(dat$t, fitted(model3p), col = "brown")
+  lines(dat$t, fitted(model4p), col = "grey")
+  legend("topleft", 
+         legend = c("Data", "Model 0", "Model 1", "Model 2", "Model 3", "Model 4", "Model 0+", "Model 1+", "Model 2+", "Model 3+", "Model 4+"), 
+         col = c("black","green","red","blue", "cyan", "orange","yellow","pink","purple", "brown", "grey"),lty =c(1,1,1,1,1), cex = 0.5)
+  
+  # Plot best model
+  plot(dat$t, dat$k, type="l", xlab="t", ylab="k_i", ylim=c(0, max(theoretical, max(dat$k))), main=title)
+  lines(dat$t, fitted(best_model), col="green")
+  lines(dat$t, theoretical, col="red")
+  legend("topleft", legend=c("Data", paste("Model ", rownames(results)[index_best_aic], sep=""), "Theoretical curve"), col=c("black", "green","red"), lty=c(1,1,1,1,1), cex=0.5)
+  
+  
+}
+```
+
+### Preferential attachment
+
+```{r}
+theoretical_pa <- k_i_pa(x_selected_indices, m0)
+main("pa_ts_1.txt", "Degrees of Selected Vertice at t=1 (PA)", theoretical_pa)
+```
+
+```{r}
+main("pa_ts_10.txt", "Degrees of Selected Vertice at t=10 (PA)", theoretical_pa)
+```
+
+```{r}
+main("pa_ts_100.txt", "Degrees of Selected Vertice at t=100 (PA)", theoretical_pa)
+```
+
+```{r}
+main("pa_ts_1000.txt", "Degrees of Selected Vertice at t=1000 (PA)", theoretical_pa)
+```
+### Random attachment
+
+```{r}
+theoretical_ra <- k_i_ra(x_selected_indices, m0)
+main("ra_ts_1.txt", "Degrees of Selected Vertice at t=1 (RA)", theoretical_ra)
+```
+
+```{r}
+main("ra_ts_10.txt", "Degrees of Selected Vertice at t=10 (RA)", theoretical_ra)
+```
+
+```{r}
+main("ra_ts_100.txt", "Degrees of Selected Vertice at t=100 (RA)", theoretical_ra)
+```
+```{r}
+main("ra_ts_1000.txt", "Degrees of Selected Vertice at t=1000 (RA)", theoretical_ra)
+```
+### Preferential attachment + no growth
+
+```{r}
+theoretical_pa_ng <- k_i_pa_ng(x_selected_indices, m0, n0_no_growth)
+main("pa_ng_ts_1.txt", "Degrees of Selected Vertice at t=1 (PA-NG)", theoretical_pa_ng)
+```
+
+```{r}
+main("pa_ng_ts_10.txt", "Degrees of Selected Vertice at t=10 (PA-NG)", theoretical_pa_ng)
+```
+
+```{r}
+main("pa_ng_ts_100.txt", "Degrees of Selected Vertice at t=100 (PA-NG)", theoretical_pa_ng)
+```
+
+```{r}
+main("pa_ng_ts_1000.txt", "Degrees of Selected Vertice at t=1000 (PA-NG)", theoretical_pa_ng)
+```
+
+

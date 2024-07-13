@@ -1,0 +1,230 @@
+---
+title: "Finding and Assessing Community Structure"
+author: "Liam Glennie, Odysseas Kyparissis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Importing Libraries
+
+```{r}
+library(igraph)
+library(clustAnalytics)
+library(sets)
+```
+
+# Importing, Generating and Preparing Graph Data (karate, synthetic graph, enron, rfid)
+
+```{r, warning = FALSE}
+
+# karate
+data(karate,package="igraphdata");
+karate <- upgrade_graph(karate);
+
+# a synthetic network with scale-free degree distribution (200 nodes, 800 edges and 4 communities)
+B = matrix(c(1, 0.25, 0.25, 0.25, 0.25, 1, 0.25, 0.25, 0.25, 0.25, 1, 0.25, 0.25, 0.25, 0.25, 1), ncol = 4)
+synthetic_network = barabasi_albert_blocks(m = 4, p = c(0.25, 0.25, 0.25, 0.25), B = B, t_max = 200, type = "Hajek", sample_with_replacement = FALSE)
+
+# enron
+data(enron,package="igraphdata");
+enron <- upgrade_graph(enron);
+
+## Convert the adjacency matrix to an igraph object
+enron <- graph.adjacency(as_adjacency_matrix(as.undirected(enron, mode = "each")), mode = "undirected", weighted = TRUE, diag = FALSE)
+
+# rfid
+data(rfid,package="igraphdata");
+rfid <- upgrade_graph(rfid);
+```
+
+# Tasks
+Below the 4 requested tasks are being developed.
+
+## Task 1: Jaccard Index Computation (jaccard_sim)
+
+```{r}
+jaccard_sim <- function(members_a, members_b) {
+  row_names <- unique(members_a)
+  column_names <- unique(members_b)
+  
+  jaccard_table <- data.frame(matrix(nrow = length(row_names), ncol =  length(column_names)))
+  rownames(jaccard_table) <- row_names
+  colnames(jaccard_table) <- column_names
+
+  for (i in row_names) {
+    ids_a <- which(members_a==i)
+    for (j in column_names) {
+      ids_b <- which(members_b==j)
+      jaccard_table[i, j] <- length(intersect(ids_a, ids_b)) / length(union(ids_a, ids_b))
+    }
+  }
+  return(jaccard_table)
+}
+```
+
+## Task 2: Cluster Similarity Identification (match_clusters)
+
+
+```{r}
+match_clusters <- function(jaccard_table, name_1, name_2) {
+  result_table <- data.frame(matrix(nrow = 1, ncol = nrow(jaccard_table)))
+  
+  for (a in 1:nrow(jaccard_table)) {
+    max_idx <- which(jaccard_table[a,] == max(jaccard_table[a,]))
+    result_table[1,a] <- jaccard_table[a,max_idx]
+    names(result_table)[a] <- paste0('(', name_1, '.', a, ',', name_2, '.', max_idx, ')')
+  }
+  
+  return(result_table)
+}
+```
+
+## Task 3: Weighted Mean Calculation for Global Jaccard Similarity (Wmean)
+
+```{r}
+Wmean <- function(mc) {
+  # Calculate the average of Jaccard indices
+  
+  # Convert the first row to numeric
+  numeric <- as.numeric(as.character(mc[1, ]))
+  
+  # Calculate the mean
+  globalJaccardIndex <- mean(numeric, na.rm = TRUE)
+  
+  return(globalJaccardIndex)
+}
+```
+
+## Task 4: Evaluation of Community Detection Algorithms
+
+```{r}
+# Function to evaluate significance of clusterings using selected scoring functions
+evaluate_clusterings <- function(graph, algorithms, ground_truth = NULL) {
+
+  # Evaluate significance using the clustAnalytics package
+  significance_table <- evaluate_significance(
+    graph,
+    alg_list = algorithms,
+    gt_clustering = ground_truth
+  )
+
+  return(significance_table)
+}
+```
+
+Here, the lists of algorithms and networks to be analyzed are established for the experiment.
+
+```{r}
+# List of community detection algorithms to evaluate
+algorithms <- list(
+  Louvain = cluster_louvain,
+  "Label Propagation" = cluster_label_prop,
+  Walktrap = cluster_walktrap,
+  betweenness=cluster_edge_betweenness
+)
+
+# Networks to evaluate
+networks <- list(
+  karate = karate,
+  synthetic = synthetic_network,
+  enron = enron,
+  rfid = rfid
+)
+```
+
+
+```{r}
+for (network_name in names(networks)) {
+  print(network_name)
+  network <- networks[[network_name]]
+  
+  # Evaluate clusterings using the specified algorithms
+  significance_table <- evaluate_clusterings(network, algorithms)
+  
+  # select a representative metric of each class
+  # Internal Connectivity. Internal Density
+  # External Connectivity. Cut Ratio
+  # Combine Internal and External Connectivity. Normalised Cut
+  # Based on a Network Model. Modularity
+  selected_metrics <- significance_table[c("internal density", "cut ratio",
+                                        "norm cut", "modularity"), ]
+  
+  print(selected_metrics)
+  
+  
+  # Find a good reference clustering (ground truth)
+  
+  # If the network has a known ground truth
+  # set it as the ground truth clustering
+  # Otherwise calculate a ground truth
+  # based on the selective metrics
+  # and an average mean between them
+  # by giving negative values to metrics
+  # which is better to have small values
+  
+  ground_truth <- NULL
+  if (network_name ==  "karate") {
+    
+    ground_truth <- V(network)$Faction
+  
+  } else if (network_name ==  "synthetic"){
+    
+    ground_truth <- V(network)$label
+  
+  } else{
+    
+    # Assuming selected_metrics is your data frame
+    selected_metrics <- as.matrix(selected_metrics)
+    
+    # Define weights (you can adjust these according to your needs)
+    weights <- c(1, -1, -1, 1)
+    
+    # Calculate weighted mean for each column
+    weighted_means <- colSums(selected_metrics * weights) / sum(abs(weights))
+    
+    # Create a new data frame with the results
+    result_table <- data.frame(
+      Weighted_Mean = weighted_means,
+      row.names = colnames(selected_metrics)
+    )
+    
+    print("Ground truth for:")
+    print(network_name)
+    print("is:")
+    print(rownames(result_table)[which.max(result_table$Weighted_Mean)])
+    
+    best_algorithm <- algorithms[[rownames(result_table)[which.max(result_table$Weighted_Mean)]]]
+    ground_truth <- unname(membership(best_algorithm(network)))
+  
+  }
+  
+  # Evaluation of clustering with functions from Tasks 1-3
+  
+  for (algorithm_name in names(algorithms)) {
+    print(algorithm_name)
+    algorithm <- algorithms[[algorithm_name]]
+    
+    # Run the algorithm on the network
+    membership <- algorithm(network)$membership
+    
+    # Compute Jaccard similarity
+    jaccard_table <- jaccard_sim(ground_truth, membership)
+    
+    # Match clusters and calculate weighted mean
+    matched_clusters <- match_clusters(jaccard_table, name_1 = "GT", name_2 = algorithm_name)
+    global_jaccard_similarity <- Wmean(matched_clusters)
+    
+    # Print the results for each algorithm on the current network
+    cat(paste("Results for", algorithm_name, "algorithm on", network_name, "network:\n"))
+    print(jaccard_table)
+    print(matched_clusters)
+    cat("Global Jaccard Similarity:", global_jaccard_similarity, "\n\n")
+    
+  }
+}
+```
+

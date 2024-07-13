@@ -1,0 +1,373 @@
+
+# Imports
+
+```{r}
+library(igraph)
+library(Matrix)
+library(poweRlaw)
+library(ggplot2)
+```
+
+# Definition of graph creation and inspection functions
+
+```{r}
+# function to create weighted graphs following normal, power-law & exponential distribution
+create_weighted_networks <- function(g, n) {
+  # General Process:
+  # 1. create un-weighted network as basis for weighted network (is given as input -> g)
+  #    -> use the edgelist of this base graph to compute a new graph
+  # 2. create distributions with as many values as edges
+  # 3. create new graph from edge list of un-weighted graph and assign distribution sequence to edges
+
+  edge_list <- get.edgelist(g)
+  num_edges <- length(E(g))
+
+  # Weights following Normal (Binomial) Distribution
+  normal <- abs(round(rnorm(num_edges, mean = 3, sd = 1)))
+  g_normal <- graph_from_edgelist(edge_list, directed = FALSE)
+  E(g_normal)$weight <- normal
+  
+  # Weights following Power-law Distribution
+  # pl_exp <- 2
+  xmin <- 1           # Minimum value for the power-law behavior
+  alpha <- 2.5        # Exponent of the power-law distribution
+  powerlaw <- abs(round(rplcon(num_edges, xmin, alpha)))
+  g_powerlaw <- graph_from_edgelist(edge_list, directed = FALSE)
+  E(g_powerlaw)$weight <- powerlaw
+  
+  # Weights following Exponential Distribution
+  lambda <- 1 # realistic value ~ 0.5; increasing reduces max weight vice versa
+  exponential <- abs(round(rexp(num_edges, rate = lambda)))
+  g_exponential <- graph_from_edgelist(edge_list, directed = FALSE)
+  E(g_exponential)$weight <- exponential
+  
+  return(list(
+    normal = g_normal,
+    powerlaw = g_powerlaw,
+    exponential = g_exponential
+  ))
+}
+
+# function to plot a weighted graph including its weight distribution
+plot_weighted_graph <- function(g, d_type, graph=TRUE) {
+  # plot distribution
+  plot(c(E(g)$weight))
+  
+  # plot graph
+  if (graph) plot(g, edge.label=E(g)$weight, main=paste("Weighted Graph with ", d_type, " Distribution", sep=""))
+}
+```
+
+# Definition of SIS simulation and threshold calculations
+
+```{r}
+
+# function to calculate average values from a list
+avg <- function(lst) {
+  return(sum(lst) / length(lst))
+}
+
+# function to calculate average of a row in an adjacency matrix
+avg_mat <- function(row) {
+  return(sum(row) / sum(row > 0))
+}
+
+# function to simulate the SIS model for a given graph
+# implementation following https://arxiv.org/pdf/1112.5683.pdf (page 2)
+sis_simulation <- function(g, beta, gamma, p0, steps, hubs=0) {
+  set.seed(s)
+  W        <- get.adjacency(g, attr = 'weight')
+  A        <- get.adjacency(g)
+  n        <- dim(W)[1]
+  w_max    <- max(W)
+  w_min    <- min(W)
+  k_max    <- max(degree(g))
+  infected <- sample(c(0, 1), n, replace=TRUE, prob=c(1-p0, p0))
+  degree_ratios <- c()
+  hub_indices   <- c()
+  hub_threshold <- 0.7
+  
+  for(i in 1:n){
+    if(sum(A[i,]) > hub_threshold * k_max){
+      hub_indices[length(hub_indices)+1] <- i
+    }
+    if(infected[i] == 1){
+      degree_ratios[length(degree_ratios)+1] <- sum(A[i,]) / k_max
+    }
+  }
+  if (sum(degree_ratios > hub_threshold) < hubs) {
+    for(i in 1:hubs-sum(degree_ratios > hub_threshold)){
+      infected[hub_indices[i]] <- 1
+    }
+    print(paste("added", hubs-sum(degree_ratios > hub_threshold), "hubs"))
+  }
+  print(paste("sum initial infected", sum(infected) / n, "; hubs:", sum(degree_ratios > hub_threshold)))
+  status   <- infected#rep(0, vcount(g))
+  results  <- Matrix(0, nrow=steps, ncol=n, sparse=TRUE)
+  
+  for(t in 1:steps){
+    for(i in 1:n){
+      # determine whether node gets infected by neighbors
+      # get list of neighbor indices
+      neighbors <- which(W[i,] > 0)
+      # get list of indices of the neighbor indices list for neighbors that are infected
+      idx_neighbors_infected <- which(infected[neighbors] == 1)
+      # only continue if there are infected neighbors
+      if(length(idx_neighbors_infected) > 0){
+        # get actual indices for infected neighbors
+        infected_neighbors <- neighbors[idx_neighbors_infected]
+        # get the weights of the infected neighbors
+        infected_neighbor_weights <- W[i,infected_neighbors]
+        # calculate average infection probability using only infected neighbor weights
+        # --> normalized_weight * 0.5
+        # --> normalized_weight: (average_weight - w_min) / (w_max - w_min)
+        # --> average_weight:    (sum of weights of infected neighbors) / (# of neighbors)
+        # because: 1 - (1 - beta)^{#neighbors} means ..
+        #              (1 - beta) = probability of not getting infected
+        #                   beta  = probability of getting infected
+        #          -> if only x neighbors are infected, then the others have a infection prob of 0%
+        #          -> calc average infection prob of infected neighbors
+        #          example with 5 neighbors with weights (1, 2, 3, 4, 5) were only neighbors 2 & 4 are infected:
+        #          prob = (0 + 2 + 0 + 4 + 0) / 5 * beta [ <!> missing normalization of weights]
+        avg_beta <- (avg(infected_neighbor_weights) / length(neighbors) - w_min) / (w_max - w_min) * 0.5
+        # calculate infection probability based on all infected neighbors
+        infection_probability <- 1 - (1 - avg_beta)^length(neighbors)
+      } else {
+        infection_probability <- 0
+      }
+      if(runif(1) < infection_probability){
+        status[i] <- 1
+      }
+      
+      # determine whether node recovers
+      if(infected[i] == 1){
+        if(runif(1) < gamma){
+          status[i] <- 0
+        }
+      }
+    }
+    infected     <- status
+    results[t, ] <- infected # maybe its only a shallow copy (-> check)
+  }
+  rowSums(round(results)) / n
+}
+
+# function to calculate the leading eigenvalue of a matrix
+leading_eigenvalue <- function(m) {
+  eigen(m)[["values"]][1]
+}
+
+# function to calculate the IBMF threshold for SIS models
+# -> adjusted to be dependent on beta (uses probability matrix instead of adjacency matrix)
+weighted_threshold <- function(g, beta) {
+  return(1 / leading_eigenvalue((get.adjacency(g, attr = "weight") / max(E(g)$weight)) * beta))
+  #return(1 / leading_eigenvalue((get.adjacency(g, attr = "weight")) * beta))
+}
+
+# function to calculate the generalized threshold
+# following https://www.cs.upc.edu/~CSN/bib/RevModPhys.87.925.pdf
+generalized_threshold <- function(g, beta, gamma) {
+  adj_mat    <- get.adjacency(g)
+  weight_mat <- get.adjacency(g, attr = "weight")
+  prob_mat   <- (weight_mat / max(E(g)$weight)) * beta
+  return(leading_eigenvalue(prob_mat + (1 - gamma) * adj_mat))
+}
+
+# function to calculate gamma based on the generalized threshold (gen thresh = 1)
+generalized_threshold_calc_gamma <- function(g, beta) {
+  adj_mat    <- get.adjacency(g)
+  weight_mat <- get.adjacency(g, attr = "weight")
+  prob_mat   <- (weight_mat / max(E(g)$weight)) * beta
+  return(-(1-leading_eigenvalue(prob_mat)) / leading_eigenvalue(adj_mat) + 1)
+}
+
+# function to create R_0 (from ChatGPT)
+weighted_R0_test <- function(g, beta, gamma) {
+  beta_eff <- beta / avg(E(g)$weight)
+  return((beta_eff / gamma) * avg(degree(g)))
+}
+
+# function to create R_0 from class with an adjusted beta based on weight
+weighted_R0 <- function(g, beta, gamma) {
+  return((beta * avg(E(g)$weight)) / gamma)
+}
+
+```
+
+# Execution of simulations
+
+```{r}
+# Define a function for plotting and saving results
+plot_and_save <- function(sim_result, beta, gamma, label) {
+  plot_df <- data.frame(step = 1:length(sim_result), total_infected = sim_result)
+  theme_set(theme_minimal(base_size = 14))
+  theme_update(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+  
+  # In your plotting function
+  p <- ggplot(plot_df, aes(x = step, y = total_infected)) +
+    geom_line(linewidth = 1, color = "#648E9C") +  # Thicker line, added color
+    geom_point(color = "#9C648E", size = 2) +  # Solid points, larger size
+    labs(
+      title = paste("Epidemic Spread -", label, "- Beta:", round(beta, 2), "- Gamma:", round(gamma, 2)),
+      x = "Time Step", y = "Infected Proportion"
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 0, hjust = 1),
+      # panel.grid.major = element_line(color = "gray80"),  # Subtle grid lines
+      # panel.grid.minor = element_blank(),  # Remove minor grid lines
+      plot.background = element_rect(fill = "white", color = NA)  # White background
+    ) +
+    scale_x_continuous(expand = c(0, 0)) + # Remove space before and after x-axis
+    scale_y_continuous(labels = scales::percent)  # If appropriate, format y-axis as percent
+  
+  # Save plot with high resolution
+  plot_filename <- paste0(results_dir, "/", label, "_beta_", round(beta, 2), "_gamma_", round(gamma, 2), ".png")
+  ggsave(plot_filename, plot = p, width = 12, height = 8, dpi = 300)
+  
+  # Save raw data
+  data_filename <- paste0(results_dir, "/", label, ", ", "_beta_", round(beta, 2), "_gamma_", round(gamma, 2), ".csv")
+  write.csv(plot_df, data_filename, row.names = FALSE)
+}
+```
+
+
+```{r}
+# Get the current date and time
+current_datetime <- format(Sys.time(), "%Y%m%d_%H%M%S")
+
+# Create a unique directory name using the datetime
+results_dir <- paste0("simulation_results_", current_datetime)
+dir.create(results_dir, recursive = TRUE)
+
+# Define the path for the output file
+output_file <- paste0(results_dir, "/simulation_output.txt")
+
+# Open the file connection
+sink(output_file)
+```
+
+
+
+```{r}
+n <- 1000 # number of nodes
+s <- 123  # seed
+set.seed(s)
+
+g_base <- erdos.renyi.game(n, p = 0.2, directed = FALSE)
+graphs <- create_weighted_networks(g_base, n)
+er_n <- graphs$normal
+er_p <- graphs$powerlaw
+er_e <- graphs$exponential
+
+ba_n <- read_graph(paste("w_ba_", n, "_1_normal.txt", sep=""), format = "graphml")
+ba_p <- read_graph(paste("w_ba_", n, "_1_powerlaw.txt", sep=""), format = "graphml")
+ba_e <- read_graph(paste("w_ba_", n, "_1_exponential.txt", sep=""), format = "graphml")
+
+g_base <- watts.strogatz.game(1, n, 1, 0.05, loops=FALSE, multiple=FALSE)
+graphs <- create_weighted_networks(g_base, n)
+ws_n <- graphs$normal
+ws_p <- graphs$powerlaw
+ws_e <- graphs$exponential
+
+execution_graphs = list(er_n, er_p, er_e, ws_n, ws_p, ws_e, ba_n, ba_p, ba_e)
+graph_labels = c("Erdős-Rényi (Gaussian)", "Erdős-Rényi (Power-law)", "Erdős-Rényi (Exponential)", 
+                 "Watts-Strogatz (Gaussian)", "Watts-Strogatz (Power-law)", "Watts-Strogatz (Exponential)", 
+                 "Barabási-Albert (Gaussian)", "Barabási-Albert (Power-law)", "Barabási-Albert (Exponential)")
+
+for(i in 1:length(execution_graphs)){
+  g     <- execution_graphs[[i]]
+  graph_label <- graph_labels[[i]]
+  k_avg <- avg(degree(g))   # average degree of graph
+  w_avg <- avg(E(g)$weight) # average weight of graph
+  
+  # set initial beta
+  beta <- 0.5
+  # calculate initial gamma based on beta & beta/gamma = 1/lambda_1
+  gamma <- (beta * w_avg) / weighted_threshold(g, beta)
+  # get optimal beta & gamma for our purpose (tuning gamma up & down)
+  while(gamma > 0.6){
+    beta <- beta - 0.01
+    gamma <- (beta * w_avg) / weighted_threshold(g, beta)
+  }
+  
+  p0    <- 0.1
+  steps <- 100
+  
+  print(paste("<w>:", w_avg, "; <k>:", k_avg))
+  print(paste("Beta:", beta, "Gamma:", gamma))
+  
+  print(paste("Weighted Threshold:", weighted_threshold(g, beta)))
+  print(paste("Weighted R0:       ", weighted_R0(g, beta, gamma)))
+  sim_result <- sis_simulation(g, beta, gamma, p0, steps)
+  plot_and_save(sim_result, beta, gamma, paste(graph_label, " - ", "On-threshold"))
+  
+  gamma_lower <- gamma - 0.4
+  print(paste("Weighted Threshold:", weighted_threshold(g, beta)))
+  print(paste("Weighted R0:       ", weighted_R0(g, beta, gamma_lower)))
+  sim_result <- sis_simulation(g, beta, gamma_lower, p0, steps)
+  plot_and_save(sim_result, beta, gamma_lower, paste(graph_label, " - ", "Outbreak"))
+  
+  gamma_higher <- gamma + 0.4
+  print(paste("Weighted Threshold:", weighted_threshold(g, beta)))
+  print(paste("Weighted R0:       ", weighted_R0(g, beta, gamma_higher)))
+  sim_result <- sis_simulation(g, beta, gamma_higher, p0, steps)
+  plot_and_save(sim_result, beta, gamma_higher, paste(graph_label, " - ", "Stability"))
+} 
+
+```
+
+```{r}
+# Close the file connection to stop writing to the file
+sink()
+```
+
+
+# Analyze homogeneity of graphs
+
+```{r}
+df <- data.frame(label=character(), d=numeric(), cc=numeric(), sd_w=numeric(), sd_d=numeric(), dist=numeric())
+
+for(i in 1:length(execution_graphs)){
+  g     <- execution_graphs[[i]]
+  entry <- data.frame(
+    label    = graph_labels[i],
+    d    = diameter(g, directed=F),
+    cc   = mean(transitivity(g, type='local'), na.rm=T),
+    sd_w = sd(E(g)$weight),
+    sd_d = sd(degree(g)) / (max(degree(g)) - min(degree(g))),
+    dist = floor(i / 3.5) + 1 # binomial = 1, exponential = 2, powerlaw = 3
+  )
+  df <- rbind(df, entry)
+}
+print(df)
+
+df$d_norm    <- (df$d-min(df$d)) / (max(df$d)-min(df$d))
+df$cc_norm   <- (df$cc-min(df$cc)) / (max(df$cc)-min(df$cc))
+df$sd_w_norm <- (df$sd_w-min(df$sd_w)) / (max(df$sd_w)-min(df$sd_w))
+df$dist_norm <- (df$dist-min(df$dist)) / (max(df$dist)-min(df$dist))
+df$homo      <- 0.25 * (1-df$d_norm) + 0.25 * (df$cc_norm) + 0.25 * (1-df$sd_w_norm) + 0.25 * (1-df$dist_norm)
+
+# Print the data frame
+print(df)
+
+# Save the data frame to a CSV file in the results directory
+df_filename <- paste0(results_dir, "/network_statistics.csv")
+write.csv(df, df_filename, row.names = FALSE)
+```
+
+ * the calculated homogeneity is representative for the question if a threshold is present
+ * however, even though g_2 has a value of 0.76 and e.g. g_6 has one of 0.49, the epidemic behaviour seems to be similar in both networks
+   --> the more homogen-like properties a complex network has, the more likely can a treshold be found
+ * use third / unrelated network type (e.g. tree, star, complete), calculate homogeneity score and run simulations -> check if results are as expected
+ * answer question as to why some networks cannot reach an infected portion of 0% but rather fluctuate around ~5%
+   --> might be because of degree/weight variances
+
+
+
+
+

@@ -1,0 +1,455 @@
+---
+title: "Simulation of SIS model over networks"
+author: "Marius Behret, Odysseas Kyparissis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Loading libraries
+
+```{r}
+library(igraph)
+set.seed(666) # For reproducibility
+```
+
+# Setting-up functions
+
+```{r}
+# Function to simulate SIS model on a given graph
+sis_simulation <- function(g, beta, gamma, p0, time_steps) {
+  set.seed(666)
+  infected <- sample(c(0, 1), vcount(g), replace=TRUE, prob=c(1-p0, p0))
+  status <- rep(0, vcount(g))
+  results <- matrix(0, nrow=time_steps, ncol=vcount(g))
+
+  for(t in 1:time_steps){
+    for(i in 1:vcount(g)){
+      if(infected[i] == 1){
+        neighbors <- neighbors(g, i)
+        for(j in neighbors){
+          if(rbinom(1, size = 1, prob = beta)){
+            status[j] <- 1
+          }
+        }
+        if(rbinom(1, size = 1, prob = gamma)){
+          status[i] <- 0
+        } else {
+          status[i] <- 1
+        }
+      }
+    }
+    infected <- status
+    results[t, ] <- infected
+  }
+  rowSums(results) / vcount(g)
+}
+
+# Function to calculate the leading eigenvalue of a graph
+leading_eigenvalue <- function(g) {
+  eigen(as.matrix(get.adjacency(g)))[["values"]][1]
+}
+
+# Theoretical comparison of threshold
+compare_numbers <- function(x, y) {
+  if (x > y) {
+    return(paste(x, "is greater than", y, "=>", "Epidemic"))
+  } else if (x < y) {
+    return(paste(x, "is less than", y, "=>", "NO Epidemic"))
+  } else {
+    return(paste(x, "is equal to", y))
+  }
+}
+
+# Function to run simulations for a given network type
+run_network_simulation <- function(network_type, n, m, k, p_er, p_ws, beta, gamma, p0, time_steps) {
+  if (network_type == "ER") {
+    g <- erdos.renyi.game(n, p_er, type="gnp")
+  } else if (network_type == "BA") {
+    g <- barabasi.game(n, m, directed=FALSE)
+  } else if (network_type == "WS") {
+    g <- watts.strogatz.game(1, n, k, p_ws, loops=FALSE, multiple=FALSE)
+  } else if (network_type == "FC") {
+    g <- make_full_graph(n)
+  } else if (network_type == "Tree") {
+    g <- make_tree(n)
+  } else {
+    stop("Invalid network type.")
+  }
+
+  # Simulate the SIS model
+  infected_proportion <- sis_simulation(g, beta, gamma, p0, time_steps)
+
+  # Calculate the leading eigenvalue
+  eigen_val <- leading_eigenvalue(g)
+
+  # Print relevant information
+  cat("--------------------------------------------", "\n")
+  cat("Network Type:", network_type, "\n")
+  cat("Beta Divided by Gamma:", beta / gamma, "\n")
+  cat("Leading eigenvalue:", eigen_val, "\n")
+  threshold <- 1 / eigen_val
+  cat("Threshold:", threshold, "\n")
+  
+  # Compare beta/gamma with the threshold
+  cat(compare_numbers(beta / gamma, threshold), "\n")
+  cat("--------------------------------------------", "\n")
+
+  return(list(
+    infected_proportion = infected_proportion,
+    threshold = threshold,
+    g = g
+  ))
+}
+
+
+run_and_plot_sis_simulation <- function(n, m, k, p_er, p_ws, beta, gamma, p0, time_steps) {
+  # Set up a larger plot
+  par(mfrow=c(1, 1), mar=c(5, 5, 4, 2) + 0.1)
+  
+  # Plotting all infected_proportion variables together
+  plot(1, type="n", main=paste0("SIS Model on Different Networks,", " beta=", beta, ", gamma=", gamma, ", p0=", p0), col="red", xlim = c(0, time_steps), ylim = c(0,1), xlab="Time", ylab="Infected Proportion")
+  # Add subtitle
+  subtitle = paste0(" m=", m, ", k=", k, ", p_er=", p_er, ", p_ws=", p_ws)
+  title(sub = subtitle)
+  
+  # Networks to simulate
+  network_types <- c("ER", "BA", "WS", "FC", "Tree")
+  colors <- c("red", "blue", "darkgreen", "orange", "purple")
+  
+  # Store results in a list
+  results_list <- list()
+  
+  # Simulate and plot for each network type
+  for (i in seq_along(network_types)) {
+    result <- run_network_simulation(network_types[i], n, m, k, p_er, p_ws, beta, gamma, p0, time_steps)
+    
+    lines(result$infected_proportion, col=colors[i])
+    
+    # Store result in the list
+    results_list[[network_types[i]]] <- result
+  }
+  
+  # Adding a legend outside the plot area
+  legend("topright", legend=network_types, col=colors, lty=1, cex=0.5, inset=0.45)
+  
+  return(list(
+    results_list = results_list,
+    network_types = network_types
+  ))
+}
+
+```
+
+# Simulations of disease spread in different networks (Task 1)
+
+To begin with, it is important to set-up proper values for the parameters of the networks and the spread of the infection. Thus:
+
+-   n = 1000 (network size)
+-   γ (gamma) = prob. that an infected node recovers
+-   β (beta) = prob. that an infected node attempts to infect each neighbor
+-   1/λ1 = epidemic threshold for arbitrary networks
+-   p0 = initial random fraction of infected nodes
+
+## Beta = 0.8, Gamma = 0.4: Epidemic
+
+### m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01
+
+```{r}
+# Common Parameters
+n <- 1000    # Number of nodes
+beta <- 0.8  # Infection rate # try with 0.4 as well
+gamma <- 0.4 # Recovery rate # and 0.8 for the results in the report
+p0 <- 0.05   # Initial infection rate
+time_steps <- 100 # Duration of the simulation
+b.div.g <- beta / gamma
+m <- 1 # m for barabasi.game: Number of edges to attach from a new node
+k_ws <- 1 # k for watts.strogatz.game: Each node is connected to k nearest neighbors
+p_ws <- 0.01 # p for watts.strogatz.game: Rewiring probability
+p_er <- 0.01 # p for erdos.renyi.game: Probability for edge creation
+
+results_epidemic1 <- run_and_plot_sis_simulation(n, m, k_ws, p_er, p_ws, beta, gamma, p0, time_steps)
+```
+
+### m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1
+
+```{r}
+# Common Parameters
+n <- 1000    # Number of nodes
+beta <- 0.8  # Infection rate # try with 0.4 as well
+gamma <- 0.4 # Recovery rate # and 0.8 for the results in the report
+p0 <- 0.05   # Initial infection rate
+time_steps <- 100 # Duration of the simulation
+b.div.g <- beta / gamma
+m <- 10 # m for barabasi.game: Number of edges to attach from a new node
+k_ws <- 10 # k for watts.strogatz.game: Each node is connected to k nearest neighbors
+p_ws <- 0.1 # p for watts.strogatz.game: Rewiring probability
+p_er <- 0.1 # p for erdos.renyi.game: Probability for edge creation
+
+results_epidemic2 <- run_and_plot_sis_simulation(n, m, k_ws, p_er, p_ws, beta, gamma, p0, time_steps)
+```
+
+
+
+### m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2
+
+```{r}
+# Common Parameters
+n <- 1000    # Number of nodes
+beta <- 0.8  # Infection rate # try with 0.4 as well
+gamma <- 0.4 # Recovery rate # and 0.8 for the results in the report
+p0 <- 0.05   # Initial infection rate
+time_steps <- 100 # Duration of the simulation
+b.div.g <- beta / gamma
+m <- 100 # m for barabasi.game: Number of edges to attach from a new node
+k_ws <- 100 # k for watts.strogatz.game: Each node is connected to k nearest neighbors
+p_ws <- 0.2 # p for watts.strogatz.game: Rewiring probability
+p_er <- 0.2 # p for erdos.renyi.game: Probability for edge creation
+
+results_epidemic3 <- run_and_plot_sis_simulation(n, m, k_ws, p_er, p_ws, beta, gamma, p0, time_steps)
+```
+## Beta = 0.4, Gamma = 0.8: NO Epidemic
+
+### m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01
+
+```{r}
+# Common Parameters
+n <- 1000    # Number of nodes
+beta <- 0.4  # Infection rate # try with 0.4 as well
+gamma <- 0.8 # Recovery rate # and 0.8 for the results in the report
+p0 <- 0.05   # Initial infection rate
+time_steps <- 100 # Duration of the simulation
+b.div.g <- beta / gamma
+m <- 1 # m for barabasi.game: Number of edges to attach from a new node
+k_ws <- 1 # k for watts.strogatz.game: Each node is connected to k nearest neighbors
+p_ws <- 0.01 # p for watts.strogatz.game: Rewiring probability
+p_er <- 0.01 # p for erdos.renyi.game: Probability for edge creation
+
+results_NO_epidemic1 <- run_and_plot_sis_simulation(n, m, k_ws, p_er, p_ws, beta, gamma, p0, time_steps)
+```
+
+### m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1
+
+```{r}
+# Common Parameters
+n <- 1000    # Number of nodes
+beta <- 0.4  # Infection rate # try with 0.4 as well
+gamma <- 0.8 # Recovery rate # and 0.8 for the results in the report
+p0 <- 0.05   # Initial infection rate
+time_steps <- 100 # Duration of the simulation
+b.div.g <- beta / gamma
+m <- 10 # m for barabasi.game: Number of edges to attach from a new node
+k_ws <- 10 # k for watts.strogatz.game: Each node is connected to k nearest neighbors
+p_ws <- 0.1 # p for watts.strogatz.game: Rewiring probability
+p_er <- 0.1 # p for erdos.renyi.game: Probability for edge creation
+
+results_NO_epidemic2 <- run_and_plot_sis_simulation(n, m, k_ws, p_er, p_ws, beta, gamma, p0, time_steps)
+```
+
+### m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2
+
+```{r}
+# Common Parameters
+n <- 1000    # Number of nodes
+beta <- 0.4  # Infection rate # try with 0.4 as well
+gamma <- 0.8 # Recovery rate # and 0.8 for the results in the report
+p0 <- 0.05   # Initial infection rate
+time_steps <- 100 # Duration of the simulation
+b.div.g <- beta / gamma
+m <- 100 # m for barabasi.game: Number of edges to attach from a new node
+k_ws <- 100 # k for watts.strogatz.game: Each node is connected to k nearest neighbors
+p_ws <- 0.2 # p for watts.strogatz.game: Rewiring probability
+p_er <- 0.2 # p for erdos.renyi.game: Probability for edge creation
+
+results_NO_epidemic3 <- run_and_plot_sis_simulation(n, m, k_ws, p_er, p_ws, beta, gamma, p0, time_steps)
+```
+
+# Simulations of disease spread based on threshold value in different networks (Task 2)
+
+```{r}
+# Function to run simulations for two sets of parameter values
+run_threshold_simulations <- function(g, p0, time_steps, threshold, epsilon = 0.05) {
+  
+  if (threshold == Inf) {
+    beta_below <- 0.001
+    gamma_below <- 0.1
+    beta_above <- 0.1
+    gamma_above <- 0.001
+    threshold_below = Inf
+    threshold_above = Inf
+  } else {
+    threshold_below = threshold - epsilon
+    if (threshold_below < 0){
+      threshold_below = threshold - 0.0002
+    }
+    res = generate_random_values(threshold_below)
+    beta_below <- res[1]
+    gamma_below <- res[2]
+    threshold_above = threshold + epsilon
+    res = generate_random_values(threshold_above)
+    beta_above <- res[1]
+    gamma_above <- res[2]
+  }
+  
+
+  # Simulate below threshold
+  infected_proportion_below <- sis_simulation(g, beta_below, gamma_below, p0, time_steps)
+
+  # Simulate above threshold
+  infected_proportion_above <- sis_simulation(g, beta_above, gamma_above, p0, time_steps)
+
+  list(
+    infected_proportion_below = infected_proportion_below,
+    infected_proportion_above = infected_proportion_above,
+    threshold_below = threshold_below,
+    beta_below,
+    gamma_below,
+    threshold_above = threshold_above,
+    beta_above = beta_above,
+    gamma_above = gamma_above
+  )
+}
+
+
+generate_random_values <- function(threshold) {
+  # Generate a random value for x within [0, 1]
+  gamma <- runif(1, min = 0.001, max = 1)
+  
+  beta <- gamma * threshold
+  
+  # Return the values
+  return(c(beta = beta, gamma = gamma))
+}
+
+
+get_threshold_simulations <- function(results, p0, time_steps) {
+  
+  
+  # Networks to simulate
+  network_types <- c("ER", "BA", "WS", "FC", "Tree")
+  colors <- c("red", "blue", "darkgreen", "orange", "purple")
+  
+  # Store results in a list
+  results_list <- list()
+  
+  # Simulate and plot for each network type
+  for (i in seq_along(network_types)) {
+    if (network_types[i] == "ER") {
+      data <- results$results_list[i]$ER
+    } else if (network_types[i] == "BA") {
+      data <- results$results_list[i]$BA
+    } else if (network_types[i] == "WS") {
+      data <- results$results_list[i]$WS 
+    } else if (network_types[i] == "FC") {
+      data <- results$results_list[i]$FC
+    } else if (network_types[i] == "Tree") {
+      data <- results$results_list[i]$Tree
+    } else {
+      stop("Invalid network type.")
+    }
+    
+    result <- run_threshold_simulations(data$g, p0, time_steps, data$threshold)
+    
+    # Store result in the list
+    results_list[[network_types[i]]] <- result
+  }
+  
+  return(list(
+    results_list = results_list,
+    network_types = network_types
+  ))
+}
+
+```
+
+```{r}
+# Threshold Simulations
+task2_epidemic1 <- get_threshold_simulations(results_epidemic1, p0, time_steps)
+task2_epidemic2 <- get_threshold_simulations(results_epidemic2, p0, time_steps)
+task2_epidemic3 <- get_threshold_simulations(results_epidemic3, p0, time_steps)
+# task2_NOepidemic1 <- get_threshold_simulations(results_NO_epidemic1, p0, time_steps)
+# task2_NOepidemic2 <- get_threshold_simulations(results_NO_epidemic2, p0, time_steps)
+# task2_NOepidemic3 <- get_threshold_simulations(results_NO_epidemic3, p0, time_steps)
+```
+
+
+## Erdős-Rényi network
+
+
+```{r}
+# Plotting the results for Erdős-Rényi network
+colors <- c("red", "blue", "darkgreen", "orange", "purple")
+par(mfrow=c(1, 1))
+plot(task2_epidemic1$results_list$ER$infected_proportion_below, type="l", col="blue", ylim=c(0, 1.3), main="Threshold Check (ER)", ylab = "Infected Proportion", lty =1)
+lines(task2_epidemic1$results_list$ER$infected_proportion_above, col="darkgreen", lty =2)
+lines(task2_epidemic2$results_list$ER$infected_proportion_below, col="orange", lty =1)
+lines(task2_epidemic2$results_list$ER$infected_proportion_above, col="purple", lty =2)
+lines(task2_epidemic3$results_list$ER$infected_proportion_below, col="red", lty =1)
+lines(task2_epidemic3$results_list$ER$infected_proportion_above, col="lightblue", lty =2)
+
+legend("topright", legend=c("Below, m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01", "Above, m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01", "Below, m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1", "Above, m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1", "Below, m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2", "Above, m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2"), col=c("blue", "darkgreen","orange","purple", "red", "lightblue"), lty=c(1,2,1,2,1,2), cex=0.5)
+
+```
+
+## Barabási-Albert network
+
+```{r}
+# Plotting the results for Erdős-Rényi network
+colors <- c("red", "blue", "darkgreen", "orange", "purple")
+par(mfrow=c(1, 1))
+plot(task2_epidemic1$results_list$BA$infected_proportion_below, type="l", col="blue", ylim=c(0, 0.25), main="Threshold Check (BA)", ylab = "Infected Proportion", lty =1)
+lines(task2_epidemic1$results_list$BA$infected_proportion_above, col="darkgreen", lty =2)
+lines(task2_epidemic2$results_list$BA$infected_proportion_below, col="orange", lty =1)
+lines(task2_epidemic2$results_list$BA$infected_proportion_above, col="purple", lty =2)
+lines(task2_epidemic3$results_list$BA$infected_proportion_below, col="red", lty =1)
+lines(task2_epidemic3$results_list$BA$infected_proportion_above, col="lightblue", lty =2)
+
+legend("topright", legend=c("Below, m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01", "Above, m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01", "Below, m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1", "Above, m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1", "Below, m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2", "Above, m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2"), col=c("blue", "darkgreen","orange","purple", "red", "lightblue"), lty=c(1,2,1,2,1,2), cex=0.5)
+```
+
+## Watts-Strogatz network
+
+```{r}
+# Plotting the results for Erdős-Rényi network
+colors <- c("red", "blue", "darkgreen", "orange", "purple")
+par(mfrow=c(1, 1))
+plot(task2_epidemic1$results_list$WS$infected_proportion_below, type="l", col="blue", ylim=c(0, 1.3), main="Threshold Check (WS)", ylab = "Infected Proportion", lty =1)
+lines(task2_epidemic1$results_list$WS$infected_proportion_above, col="darkgreen", lty =2)
+lines(task2_epidemic2$results_list$WS$infected_proportion_below, col="orange", lty =1)
+lines(task2_epidemic2$results_list$WS$infected_proportion_above, col="purple", lty =2)
+lines(task2_epidemic3$results_list$WS$infected_proportion_below, col="red", lty =1)
+lines(task2_epidemic3$results_list$WS$infected_proportion_above, col="lightblue", lty =2)
+
+legend("topright", legend=c("Below, m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01", "Above, m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01", "Below, m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1", "Above, m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1", "Below, m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2", "Above, m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2"), col=c("blue", "darkgreen","orange","purple", "red", "lightblue"), lty=c(1,2,1,2,1,2), cex=0.5)
+```
+## Tree network
+
+```{r}
+# Plotting the results for Erdős-Rényi network
+colors <- c("red", "blue", "darkgreen", "orange", "purple")
+par(mfrow=c(1, 1))
+plot(task2_epidemic1$results_list$Tree$infected_proportion_below, type="l", col="blue", ylim=c(0, 0.9), main="Threshold Check (Tree)", ylab = "Infected Proportion", lty =1)
+lines(task2_epidemic1$results_list$Tree$infected_proportion_above, col="darkgreen", lty =2)
+lines(task2_epidemic2$results_list$Tree$infected_proportion_below, col="orange", lty =1)
+lines(task2_epidemic2$results_list$Tree$infected_proportion_above, col="purple", lty =2)
+lines(task2_epidemic3$results_list$Tree$infected_proportion_below, col="red", lty =1)
+lines(task2_epidemic3$results_list$Tree$infected_proportion_above, col="lightblue", lty =2)
+
+legend("topright", legend=c("Below, m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01", "Above, m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01", "Below, m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1", "Above, m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1", "Below, m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2", "Above, m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2"), col=c("blue", "darkgreen","orange","purple", "red", "lightblue"), lty=c(1,2,1,2,1,2), cex=0.5)
+```
+## Fully Connected
+
+
+```{r}
+# Plotting the results for Fully Connected network
+colors <- c("red", "blue", "darkgreen", "orange", "purple")
+par(mfrow=c(1, 1))
+plot(task2_epidemic1$results_list$FC$infected_proportion_below, type="l", col="blue", ylim=c(0, 1.4), main="Threshold Check (FC)", ylab = "Infected Proportion", lty =1)
+lines(task2_epidemic1$results_list$FC$infected_proportion_above, col="darkgreen", lty =2)
+lines(task2_epidemic2$results_list$FC$infected_proportion_below, col="orange", lty =1)
+lines(task2_epidemic2$results_list$FC$infected_proportion_above, col="purple", lty =2)
+lines(task2_epidemic3$results_list$FC$infected_proportion_below, col="red", lty =1)
+lines(task2_epidemic3$results_list$FC$infected_proportion_above, col="lightblue", lty =2)
+
+legend("topright", legend=c("Below, m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01", "Above, m = 1, k_ws = 1, p_ws = 0.01, p_er = 0.01", "Below, m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1", "Above, m = 10, k_ws = 10, p_ws = 0.1, p_er = 0.1", "Below, m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2", "Above, m = 100, k_ws = 100, p_ws = 0.2, p_er = 0.2"), col=c("blue", "darkgreen","orange","purple", "red", "lightblue"), lty=c(1,2,1,2,1,2), cex=0.5)
+```
+

@@ -1,0 +1,12 @@
+language file
+Arabic ./data/degree_sequences/Arabic_in-degree_sequence.txt
+Basque ./data/degree_sequences/Basque_in-degree_sequence.txt
+Catalan ./data/degree_sequences/Catalan_in-degree_sequence.txt
+Chinese ./data/degree_sequences/Chinese_in-degree_sequence.txt
+Czech ./data/degree_sequences/Czech_in-degree_sequence.txt
+English ./data/degree_sequences/English_in-degree_sequence.txt
+Greek ./data/degree_sequences/Greek_in-degree_sequence.txt
+Hungarian ./data/degree_sequences/Hungarian_in-degree_sequence.txt
+Italian ./data/degree_sequences/Italian_in-degree_sequence.txt
+Turkish ./data/degree_sequences/Turkish_in-degree_sequence.txt
+

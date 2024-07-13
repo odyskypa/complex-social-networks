@@ -1,0 +1,101 @@
+# Plot Simulation Results
+
+```{r}
+library(ggplot2)
+library(scales)
+```
+
+
+```{r}
+# Function to plot multiple simulations on a single graph and save it
+# Function to plot multiple simulations on a single graph and save it
+plot_and_combine <- function(file_paths, model, distribution, results_dir, line_colors, point_colors) {
+  # Prepare an empty data frame to hold all data
+  combined_df <- data.frame()
+  
+  line_colors <- c("#648E9C", "#9C648E", "#8E9C64")
+  point_colors <- c("#FDD9E6", "#6D9C8E", "#AEC6CF")
+
+  # Read the data from each CSV file and combine
+  for (file_path in file_paths) {
+    sim_data <- read.csv(file_path)
+    
+    # Check if the expected columns exist
+    if(!all(c("step", "total_infected") %in% names(sim_data))){
+      stop("Expected columns 'step' and 'total_infected' not found in ", file_path)
+    }
+    
+    # Extract scenario, beta, and gamma from the filename
+    parts <- strsplit(basename(file_path), " _")
+    scenario <- gsub(pattern = ".* -  (.+),", replacement = "\\1", x = parts[[1]][1])
+    beta <- gsub(pattern = ".*beta_(.*)_gamma_.*", replacement = "\\1", x = parts[[1]][2])
+    gamma <- gsub(pattern = ".*gamma_(.*).csv", replacement = "\\1", x = parts[[1]][2])
+    label <- paste("beta:", beta, ", gamma:", gamma, ",", scenario)
+    sim_data$scenario <- label
+    combined_df <- rbind(combined_df, sim_data)
+  }
+
+  # Create a factor for the scenarios to ensure consistent color mapping
+  combined_df$scenario <- factor(combined_df$scenario, levels = unique(combined_df$scenario))
+  
+  # Ensure that the number of provided colors matches the number of scenarios
+  if(length(line_colors) < length(unique(combined_df$scenario)) || length(point_colors) < length(unique(combined_df$scenario))) {
+    stop("Not enough colors provided for the number of scenarios.")
+  }
+
+  # Plotting
+  p <- ggplot(combined_df, aes(x = step, y = total_infected, group = scenario)) +
+    geom_line(aes(color = scenario)) +  # Line plot
+    geom_point(aes(color = scenario, shape = scenario), size = 2) +  # Solid points, larger size
+    scale_color_manual(values = line_colors) +  # Assign colors to lines
+    scale_shape_manual(values = rep(1:length(point_colors), each = 2)) +  # Assign shapes to points
+    labs(
+      title = paste("Epidemic Spread -", model, distribution, "Distribution"),
+      x = "Time Step", y = "Infected Proportion",
+      color = "Scenario",
+      shape = "Scenario"
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+      axis.title = element_text(size = 14),
+      axis.text = element_text(size = 12),
+      legend.position = "bottom",
+      plot.background = element_rect(fill = "white", color = NA)
+    ) +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(labels = percent_format(accuracy = 0.01))  # Format y-axis as percent
+
+  # Save plot with high resolution
+  plot_filename <- paste0(results_dir, "/", model, "_", distribution, "_combined.png")
+  ggsave(plot_filename, plot = p, width = 12, height = 8, dpi = 300)
+}
+```
+
+```{r}
+# Define the results directory and the model type
+results_dir <- "./simulation_results_20240119_094104"
+
+# Define the models and distributions you want to process
+models <- c("Barabási-Albert", "Erdős-Rényi", "Watts-Strogatz")
+distributions <- c("Exponential", "Gaussian", "Power-law")
+
+
+# Iterate over each model and distribution and generate the plots
+for (model in models) {
+  for (distribution in distributions) {
+    # Find CSV files that match the model and distribution pattern
+    file_paths <- list.files(results_dir, pattern = paste0(model, ".*", distribution, ".*\\.csv"), full.names = TRUE)
+
+    # Check if we have found any files
+    if (length(file_paths) == 0) {
+      cat("No files found for the model", model, "and distribution", distribution, "\n")
+    } else {
+      print(file_paths)
+      # Run the plotting function for the current combination of model and distribution
+      plot_and_combine(file_paths, model, distribution, results_dir, line_colors, point_colors)
+    }
+  }
+}
+```
+

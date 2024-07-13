@@ -1,0 +1,171 @@
+# Loading Libraries
+
+```{r}
+# Load the necessary library
+if(!require(ggplot2)) install.packages("ggplot2")
+library(ggplot2)
+library(poweRlaw)
+```
+
+
+
+# Distributions Analysis
+
+## Normal Distribution
+
+```{r}
+# Define means and standard deviations
+means <- c(3, 10, 20)
+stds <- c(1, 5, 10)
+
+# Create a data frame for plotting
+data <- data.frame(x = c(), y = c(), group = c())
+
+# Populate the data frame with Gaussian distributions
+for (i in 1:length(means)) {
+  for (j in 1:length(stds)) {
+    x_values <- seq(means[i] - 3*stds[j], means[i] + 3*stds[j], length.out = 100)
+    y_values <- dnorm(x_values, mean = means[i], sd = stds[j])
+    data <- rbind(data, data.frame(x = x_values, y = y_values, 
+                                   group = paste("Mean =", means[i], "SD =", stds[j])))
+  }
+}
+
+# Colors
+colors <- c("#648E9C", "#9C648E", "#AEC6CF", "#FDD9E6", "#6D9C8E", 
+            "#8E9C64", "#C6AECF", "#7F96B2", "#9C8E6D")
+theme_set(theme_minimal(base_size = 14))
+theme_update(
+  plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+  axis.title = element_text(size = 14),
+  axis.text = element_text(size = 12)
+)
+# Plot
+p <- ggplot(data, aes(x = x, y = y, color = group)) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = colors) +
+  labs(title = "Gaussian Distributions of Sexual Contacts",
+       x = "Number of Contacts",
+       y = "Density",
+       color = "Distribution") +
+  theme(
+      axis.text.x = element_text(angle = 0, hjust = 1),
+      # panel.grid.major = element_line(color = "gray80"),  # Subtle grid lines
+      # panel.grid.minor = element_blank(),  # Remove minor grid lines
+      plot.background = element_rect(fill = "white", color = NA)  # White background
+    )
+
+# Save plot with high resolution
+plot_filename <- paste0("normal-distributions.png")
+ggsave(plot_filename, plot = p, width = 12, height = 8, dpi = 300)
+```
+
+
+## Power-law Distribution
+
+```{r}
+# Define xmin and alpha values for Power-law distributions
+xmins <- c(1, 2, 3)
+alphas <- c(2.5, 3.0, 3.5)
+
+# Create a data frame for plotting
+data <- data.frame(x = c(), y = c(), group = c())
+
+# Populate the data frame with Power-law distributions
+for (i in 1:length(xmins)) {
+  for (j in 1:length(alphas)) {
+    # Generate random variates
+    pl_variates <- rplcon(1000, xmin = xmins[i], alpha = alphas[j])
+    # Use a histogram to estimate the density
+    hist_data <- hist(pl_variates, plot = FALSE, breaks = "FD")
+    x_values <- hist_data$mids
+    y_values <- hist_data$density
+    data <- rbind(data, data.frame(x = x_values, y = y_values, 
+                                   group = paste("xmin =", xmins[i], "alpha =", alphas[j])))
+  }
+}
+
+# Colors (same as before)
+colors <- c("#648E9C", "#9C648E", "#AEC6CF", "#FDD9E6", "#6D9C8E", 
+            "#8E9C64", "#C6AECF", "#7F96B2", "#9C8E6D")
+
+# Base theme
+theme_set(theme_minimal(base_size = 14))
+theme_update(
+  plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+  axis.title = element_text(size = 14),
+  axis.text = element_text(size = 12)
+)
+
+# Plot
+p <- ggplot(data, aes(x = x, y = y, color = group)) +
+  geom_line(linewidth = 1) +
+  scale_x_log10() +  # Apply logarithmic scale to x-axis
+  scale_color_manual(values = colors) +
+  labs(title = "Power-law Distributions of Sexual Contacts",
+       x = "Number of Contacts",
+       y = "Density",
+       color = "Distribution") +
+  theme(
+      axis.text.x = element_text(angle = 0, hjust = 1),
+      plot.background = element_rect(fill = "white", color = NA)
+    )
+
+# Save plot with high resolution
+plot_filename <- paste0("power-law-distributions.png")
+ggsave(plot_filename, plot = p, width = 12, height = 8, dpi = 300)
+```
+
+
+## Exponential Distribution
+
+```{r}
+# Define lambda values for Exponential distributions
+lambdas <- c(0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0)
+
+# Create a data frame for plotting
+data <- data.frame(x = c(), y = c(), group = c())
+
+# Populate the data frame with Exponential distributions
+for (lambda in lambdas) {
+    # Generate random variates
+    exp_variates <- rexp(1000, rate = lambda)
+    # Use a histogram to estimate the density
+    hist_data <- hist(exp_variates, plot = FALSE, breaks = "FD")
+    x_values <- hist_data$mids
+    y_values <- hist_data$density
+    data <- rbind(data, data.frame(x = x_values, y = y_values, 
+                                   group = paste("Lambda =", lambda)))
+}
+
+# Colors (same as before)
+colors <- c("#648E9C", "#9C648E", "#AEC6CF", "#FDD9E6", "#6D9C8E", 
+            "#8E9C64", "#C6AECF", "#7F96B2", "#9C8E6D")
+
+# Base theme
+theme_set(theme_minimal(base_size = 14))
+theme_update(
+  plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+  axis.title = element_text(size = 14),
+  axis.text = element_text(size = 12)
+)
+
+# Plot
+p <- ggplot(data, aes(x = x, y = y, color = group)) +
+  geom_line(linewidth = 1) +
+  scale_x_log10() +  # Apply logarithmic scale to x-axis
+  scale_color_manual(values = colors) +
+  labs(title = "Exponential Distributions of Sexual Contacts",
+       x = "Number of Contacts",
+       y = "Density",
+       color = "Distribution") +
+  theme(
+      axis.text.x = element_text(angle = 0, hjust = 1),
+      plot.background = element_rect(fill = "white", color = NA)
+    )
+
+# Save plot with high resolution
+plot_filename <- paste0("exponential-distributions.png")
+ggsave(plot_filename, plot = p, width = 12, height = 8, dpi = 300)
+```
+
