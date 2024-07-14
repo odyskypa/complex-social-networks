@@ -1,5 +1,5 @@
 # Complex Social Networks
-Project of Complex and Social Networks (CSN) Course for the Master in Data Science Program of Universitat Politècnica de Catalunya (UPC)
+Projects of Complex and Social Networks (CSN) Course for the Master in Data Science Program of Universitat Politècnica de Catalunya (UPC)
 ***
 
 This repository contains the proposed solutions for the projects of the `Complex Social Networks` course. Each project focuses on different aspects of network analysis, ranging from basic network models to advanced epidemic spreading simulations. Below is a detailed description of each assignment and the corresponding solutions.
