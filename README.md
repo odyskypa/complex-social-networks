@@ -24,7 +24,7 @@ This repository contains the proposed solutions for the projects of the `Complex
 - Analyze the `clustering coefficient` and the `average shortest-path` as functions of the parameter \( p \) in the WS model.
 - Analyze the `average shortest-path length` as a function of the `network size` in the ER model.
 
-### Solution
+### [Solution](./01.%20Introduction%20to%20igraph/docs/report.pdf)
 - Implementation of `Watts-Strogatz` and `Erdős-Rényi` models using igraph.
 - Calculation and visualization of `clustering coefficients` and `average shortest paths`.
 - Comparative analysis and interpretation of results.
@@ -38,7 +38,7 @@ This repository contains the proposed solutions for the projects of the `Complex
 - Examine the empirical in-degree distribution of several languages’ lexicons.
 - Assess the `adequacy of various probability distributions` in modeling the observed in-degree distribution patterns using **Akaike information criterion (AIC)**.
 
-### Solution
+### [Solution](./02.%20Analysis%20of%20Degree%20Distribution/docs/report.pdf)
 - Data preparation and in-degree sequence extraction for different languages.
 - Application of **probability distributions**: `Displaced Poisson, Displaced geometric, Zeta (with and without truncation), and Altmann function`.
 - Parameter estimation using **Maximum Likelihood Estimation (MLE)** and `AIC-based` model comparison.
@@ -52,7 +52,7 @@ This repository contains the proposed solutions for the projects of the `Complex
 - Test **observed network metrics against null hypotheses** based on `Erdős-Rényi` graphs and `switching` models.
 - Implement a `Monte Carlo` procedure with `500` samples for significance testing.
 
-### Solution
+### [Solution](./03.%20Significance%20of%20Network%20Metrics/docs/report.pdf)
 - Calculation of global `clustering coefficients`.
 - `Hypothesis testing` with null models.
 - `Monte Carlo` simulations with parallel computing for significance estimation.
@@ -66,7 +66,7 @@ This repository contains the proposed solutions for the projects of the `Complex
 - Find the best fit from a set of `8` models (**power-law, exponential, logarithmic**, etc.).
 - Analyze `AIC` values and `test residuals` for **homoskedasticity**.
 
-### Solution
+### [Solution](./04.%20Non-linear%20Regression%20on%20Dependency%20Trees/docs/report.pdf)
 - Data extraction and calculation of $\langle k^2 \rangle$.
 - **Non-linear regression** with multiple models.
 - Model selection based on `AIC` and `residual analysis`.
@@ -79,7 +79,7 @@ This repository contains the proposed solutions for the projects of the `Complex
 - Explore and compare various `community detection` algorithms.
 - Evaluate communities based on `significance scoring functions` and the `Jaccard` similarity metric.
 
-### Solution
+### [Solution](./05.%20Finding%20and%20Assessing%20Community%20Structure/docs/report.pdf)
 - Implementation of community detection algorithms: **edge betweenness, fastgreedy, label propagation, leading eigenvector, multilevel, optimal, and spinglass**.
 - `Evaluation of community quality` based on internal and external connectivity metrics.
 
@@ -91,7 +91,7 @@ This repository contains the proposed solutions for the projects of the `Complex
 - Simulate and analyze the `Barabási-Albert (BA)` model and its variants.
 - Apply `curve-fitting` methods on **degree distribution over time**.
 
-### Solution
+### [Solution](./06.%20Network%20Dynamics/docs/report.pdf)
 - Simulation of the `BA` model and its variants.
 - Curve-fitting using `Displaced Poisson`, `Displaced geometric`, `Zeta` (with various parameters), and `Right-truncated Zeta`.
 - Analysis and interpretation of **dynamical principles**.
@@ -105,7 +105,7 @@ This repository contains the proposed solutions for the projects of the `Complex
 - Simulate the dynamics of disease transmission **across various network types**.
 - `Validate` simulations against `theoretical predictions of epidemic thresholds`.
 
-### Solution
+### [Solution](./07.%20Epidemic%20Spreading%20over%20Networks/docs/report.pdf)
 - Implementation of the `SIS` model on different network structures (**Erdos-Renyi, scale-free, small-world, complete graphs, and tree structures**).
 - Analysis of `simulation parameters` (**recovery rate, infection rate, initial infected fraction**).
 - Validation against **theoretical** epidemic thresholds.
@@ -118,7 +118,7 @@ This repository contains the proposed solutions for the projects of the `Complex
 - **Advance** the `SIS` model to incorporate **weighted networks** for `sexual epidemic spread`.
 - Estimate epidemiological variables and validate epidemic thresholds for weighted cases.
 
-### Solution
+### [Solution](./08.%20Simulation%20of%20SIS%20Model%20over%20Weighted%20Networks/docs/report.pdf)
 - Development of a **weighted SIS model**.
 - Simulation of epidemic spread using `weights generated from` **normal, power-law, and exponential distributions**.
 - Analysis of basic reproductive ratios and epidemic thresholds.
