@@ -62,12 +62,12 @@ This repository contains the proposed solutions for the projects of the `Complex
 ## Non-linear Regression on Dependency Trees
 
 ### [Objectives](./04.%20Non-linear%20Regression%20on%20Dependency%20Trees/docs/Non-linear-regression-on-dependency-trees-statement.pdf)
-- Investigate how the second moment of a sentence’s degree \( \langle k^2 \rangle \) scales with the number of nodes in the sentence.
+- Investigate how the second moment of a sentence’s degree $\langle k^2 \rangle$ scales with the number of nodes in the sentence.
 - Find the best fit from a set of `8` models (**power-law, exponential, logarithmic**, etc.).
 - Analyze `AIC` values and `test residuals` for **homoskedasticity**.
 
 ### Solution
-- Data extraction and calculation of \( \langle k^2 \rangle \).
+- Data extraction and calculation of $\langle k^2 \rangle$.
 - **Non-linear regression** with multiple models.
 - Model selection based on `AIC` and `residual analysis`.
 
